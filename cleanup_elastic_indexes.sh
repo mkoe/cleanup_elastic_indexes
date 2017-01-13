@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#### Start Configuration Section"
+
 # In case of an error, who should receive the email
 MAILTO="PROVIDE EMAILADDRESSE"
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -21,6 +23,9 @@ ELASTICSERVER="PUT YOUR ELASTICSERVERNAME HERE"
 ELASTICPORT="9200"
 #Put here all your indices which need to be ignored by this script
 IGNORE_INDICES="\.[a-zA-Z]|kibana"
+
+#### End Configuration Section
+
 
 BREAK=0
 # this script will clean up all left overs
