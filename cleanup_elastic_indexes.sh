@@ -96,26 +96,42 @@ then
 	# we will need to get all closed indexes creationdates, because they are not included within the /_all query
 	for i in $( awk '/close/{print $2}' ${FILE_INDEX} | grep -v -E "${IGNORE_INDICES}")
 	do
-	    INDEX_DATE=$(curl -s http://${ELASTICSERVER}:${ELASTICPORT}/${i} | jq -c  "( .[].settings.index.creation_date  | tonumber )")
-		CORRECT_DATE=$(echo ${INDEX_DATE} / 1000 | bc)
-		if [[ ${INDEX_DATE} -lt ${DELETE_AFTER_DAYS} ]] 
-		then
-			debug "Will need to delete ${i} because it was created $(date -d @${CORRECT_DATE})"
-			HTTP_RESP=$(curl -s -w "%{http_code}" -o /dev/null -XDELETE http://${ELASTICSERVER}:${ELASTICPORT}/${i})
-			HTTP_TEMP_RESP=$(curl -w "%{http_code}" -o /dev/null -s -XDELETE http://${ELASTICSERVER}:${ELASTICPORT}/_template/${i})
-			if [[ ${HTTP_RESP} -gt 200 ]]  && [[ ${HTTP_RESP} -ne 404 ]]
-			then
-				log_error "Deleting index ${i} failed with Errorcode: ${HTTP_RESP}"
-			fi
-			if [[ ${HTTP_TEMP_RESP} -gt 200 ]] && [[ ${HTTP_TEMP_RESP} -ne 404 ]]
-			then
-				log_error "Deleting Template ${i} failed with Errorcode: ${HTTP_TEMP_RESP}"
+		debug "#### $i #####"
+		# Added code to run on multiple hosts
+	    TEMP_DATE=$(curl -s http://${ELASTICSERVER}:${ELASTICPORT}/${i} -w "%{http_code}" -o /tmp/remove_tmp_index)
+	    if [[ ${TEMP_DATE} -eq 200 ]]
+	    then
+		    INDEX_DATE=$(jq -c  "( .[].settings.index.creation_date  | tonumber )" /tmp/remove_tmp_index)
+		    debug "INDEXDATE : ${INDEX_DATE}"
+		    # Added validation for empty INDEXDATE, to be able to run scripts on multiple hosts
+		    if [[ -n ${INDEX_DATE} ]] && ( echo ${INDEX_DATE} | grep  -o -E [[:digit:]] > /dev/null  )
+		    then
+				CORRECT_DATE=$(echo ${INDEX_DATE} / 1000 | bc)
+				if [[ ${INDEX_DATE} -lt ${DELETE_AFTER_DAYS} ]] 
+				then
+					debug "Will need to delete ${i} because it was created $(date -d @${CORRECT_DATE})"
+					HTTP_RESP=$(curl -s -w "%{http_code}" -o /dev/null -XDELETE http://${ELASTICSERVER}:${ELASTICPORT}/${i})
+					HTTP_TEMP_RESP=$(curl -w "%{http_code}" -o /dev/null -s -XDELETE http://${ELASTICSERVER}:${ELASTICPORT}/_template/${i})
+					if [[ ${HTTP_RESP} -gt 200 ]]  && [[ ${HTTP_RESP} -ne 404 ]]
+					then
+						log_error "Deleting index ${i} failed with Errorcode: ${HTTP_RESP}"
+					fi
+					if [[ ${HTTP_TEMP_RESP} -gt 200 ]] && [[ ${HTTP_TEMP_RESP} -ne 404 ]]
+					then
+						log_error "Deleting Template ${i} failed with Errorcode: ${HTTP_TEMP_RESP}"
+					fi
+				else
+					debug "${i}  remain on Store because it was created $(date -d @${CORRECT_DATE})"
+				fi
+			else
+				debug "INDEX ${i} has already been deleted"
 			fi
 		else
-			debug "${i}  remain on Store because it was created $(date -d @${CORRECT_DATE})"
+			debug "INDEX ${i} has already been deleted"
 		fi
 	done
 	rm ${LOCK_DIR}/cleanup_elastic.lock
+	rm /tmp/remove_tmp_index
 else
 	log_error "Lockfile exists. Please remove ${LOCK_DIR}/cleanup_elastic.lock and check your Mails"
 fi
